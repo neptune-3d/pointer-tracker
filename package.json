@@ -1,7 +1,7 @@
 {
   "name": "@neptune3d/pointer-tracker",
   "version": "0.0.1",
-  "description": "A starter for creating a TypeScript package.",
+  "description": "Lightweight utility for tracking pointer interactions, supporting multi-touch, pointer lock, and gesture composition.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/neptune3d/pointer-tracker#readme",
