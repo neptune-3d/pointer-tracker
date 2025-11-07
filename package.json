@@ -1,16 +1,16 @@
 {
   "name": "@neptune3d/pointer-tracker",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Lightweight utility for tracking pointer interactions, supporting multi-touch, pointer lock, and gesture composition.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/neptune3d/pointer-tracker#readme",
+  "homepage": "https://github.com/neptune-3d/pointer-tracker#readme",
   "bugs": {
-    "url": "https://github.com/neptune3d/pointer-tracker/issues"
+    "url": "https://github.com/neptune-3d/pointer-tracker/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/neptune3d/pointer-tracker.git"
+    "url": "git+https://github.com/neptune-3d/pointer-tracker.git"
   },
   "author": "Dusan Jovanov <jovanovdusan1@gmail.com>",
   "files": [
