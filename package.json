@@ -1,0 +1,41 @@
+{
+  "name": "@neptune3d/pointer-tracker",
+  "version": "0.0.1",
+  "description": "A starter for creating a TypeScript package.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/neptune3d/pointer-tracker#readme",
+  "bugs": {
+    "url": "https://github.com/neptune3d/pointer-tracker/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neptune3d/pointer-tracker.git"
+  },
+  "author": "Dusan Jovanov <jovanovdusan1@gmail.com>",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "bumpp": "^10.3.1",
+    "prettier": "2.8",
+    "tsdown": "^0.16.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.7"
+  }
+}
