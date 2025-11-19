@@ -2,15 +2,11 @@
 
 A lightweight utility for managing pointer interactions across mouse, touch, and stylus input. Tracks active pointers, abstracts pointer capture, and supports gesture composition for drag, pinch, and pointer lock scenarios.
 
----
-
 ## 🚀 Installation
 
 ```bash
 npm install @neptune3d/pointer-tracker
 ```
-
----
 
 ## 📦 Basic Usage
 
@@ -32,8 +28,6 @@ const tracker = new PointerTracker({
 tracker.connect(myElement); // Attach to a DOM element
 ```
 
----
-
 ## ✨ Features
 
 - Tracks multiple active pointers (`pointerId`, position, button)
@@ -46,8 +40,6 @@ tracker.connect(myElement); // Attach to a DOM element
   - `getCenter()` – centroid of active pointers
   - `getDistance(a, b)` – distance between two pointers
   - `getNDCPointer(id, element)` – normalized device coordinates
-
----
 
 ## 🧹 Cleanup
 
