@@ -39,7 +39,7 @@ tracker.connect(myElement); // Attach to a DOM element
   - `getActivePointers()` – all tracked pointers
   - `getCenter()` – centroid of active pointers
   - `getDistance(a, b)` – distance between two pointers
-  - `getNDCPointer(id, element)` – normalized device coordinates
+  - `getNDCPoint(id, element)` – normalized device coordinates
 
 ## 🧹 Cleanup
 

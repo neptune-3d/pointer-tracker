@@ -30,23 +30,27 @@ export class PointerTracker {
   constructor(props?: PointerTrackerProps) {
     this.onPointerDownCallback = props?.onPointerDown;
     this.onActivePointerMoveCallback = props?.onActivePointerMove;
+    this.onPointerCancelCallback = props?.onPointerCancel;
+    this.onPointerUpCallback = props?.onPointerUp;
     this.onPointerEndCallback = props?.onPointerEnd;
     this.onMouseMoveLockedCallback = props?.onMouseMoveLocked;
     this.onPointerMoveCallback = props?.onPointerMove;
     this.onSingleTouchResume = props?.onSingleTouchResume;
   }
 
-  private onPointerDownCallback;
-  private onActivePointerMoveCallback;
-  private onPointerEndCallback;
-  private onMouseMoveLockedCallback;
-  private onPointerMoveCallback;
-  private onSingleTouchResume;
+  protected onPointerDownCallback;
+  protected onActivePointerMoveCallback;
+  protected onPointerCancelCallback;
+  protected onPointerUpCallback;
+  protected onPointerEndCallback;
+  protected onMouseMoveLockedCallback;
+  protected onPointerMoveCallback;
+  protected onSingleTouchResume;
 
-  private activePointerIds: Set<number> = new Set();
-  private pointers: Map<number, PointerInfo> = new Map();
-  private element: HTMLElement | null = null;
-  private isPointerLocked: boolean = false;
+  protected activePointerIds: Set<number> = new Set();
+  protected pointers: Map<number, Pointer> = new Map();
+  protected element: HTMLElement | null = null;
+  protected isPointerLocked: boolean = false;
 
   /**
    * Attaches the tracker to a specific DOM element and begins listening
@@ -67,7 +71,7 @@ export class PointerTracker {
     this.element = element;
 
     element.addEventListener("pointerdown", this.onPointerDown);
-    element.addEventListener("pointercancel", this.onPointerEnd);
+    element.addEventListener("pointercancel", this.onPointerCancel);
 
     element.ownerDocument.addEventListener(
       "pointerlockchange",
@@ -102,12 +106,12 @@ export class PointerTracker {
    * unmount or teardown, to prevent memory leaks and dangling listeners.
    */
   disconnect() {
-    if (this.element == null) return;
+    if (!this.element) return;
 
     this.element.removeEventListener("pointerdown", this.onPointerDown);
     this.element.removeEventListener("pointermove", this.onActivePointerMove);
-    this.element.removeEventListener("pointerup", this.onPointerEnd);
-    this.element.removeEventListener("pointercancel", this.onPointerEnd);
+    this.element.removeEventListener("pointerup", this.onPointerUp);
+    this.element.removeEventListener("pointercancel", this.onPointerCancel);
 
     this.element.ownerDocument.removeEventListener(
       "pointerlockchange",
@@ -143,36 +147,8 @@ export class PointerTracker {
    * @param pointerId - The unique identifier of the pointer (from PointerEvent.pointerId).
    * @return The raw screen-space pointer info (pageX, pageY, button), or undefined if not tracked.
    */
-  getPointer(pointerId: number): PointerInfo | undefined {
+  getPointer(pointerId: number): Pointer | undefined {
     return this.pointers.get(pointerId);
-  }
-
-  /**
-   * Computes the normalized device coordinates (NDC) for a given pointer ID,
-   * relative to the specified DOM element.
-   *
-   * Converts the pointer's position from screen-space (pageX/pageY) to NDC:
-   * - x ∈ [-1, 1] from left to right
-   * - y ∈ [-1, 1] from bottom to top
-   *
-   * Useful for raycasting or mapping pointer input to 3D space.
-   *
-   * @param pointerId - The unique identifier of the pointer to normalize.
-   * @param element - The DOM element whose bounds define the normalization frame.
-   * @return The normalized pointer info (x, y, button), or null if the pointer is not tracked.
-   */
-  getNDCPointer(pointerId: number): PointerInfo | null {
-    if (!this.element || this.isPointerLocked) return null;
-
-    const p = this.getPointer(pointerId);
-    if (!p) return null;
-
-    const rect = this.element.getBoundingClientRect();
-    return {
-      x: ((p.x - rect.left) / this.element.clientWidth) * 2 - 1,
-      y: (-(p.y - rect.top) / rect.height) * 2 + 1,
-      button: p.button,
-    };
   }
 
   /**
@@ -185,28 +161,77 @@ export class PointerTracker {
    *
    * @return An array of `PointerInfo` objects for all active pointer IDs.
    */
-  getActivePointers(): PointerInfo[] {
+  getActivePointers(): Pointer[] {
     return Array.from(this.pointers.values());
+  }
+
+  /**
+   * Computes the normalized device coordinates (NDC) for a given pointer ID,
+   * relative to the specified DOM element.
+   *
+   * Converts the pointer's position from viewport-space (clientX/clientY) to NDC:
+   * - x ∈ [-1, 1] from left to right
+   * - y ∈ [-1, 1] from bottom to top
+   *
+   * Useful for raycasting or mapping pointer input to 3D space.
+   *
+   * @param pointerId - The unique identifier of the pointer to normalize.
+   * @param target - A Point object to write results into, allowing reuse and avoiding allocations.
+   * @param rect - Optional bounding box of the element. Can be a lightweight `Rect` or a native `DOMRect`.
+   *               Passing this allows callers to cache `getBoundingClientRect()` for performance.
+   *               If omitted, the method will query the element’s rect internally.
+   * @return The normalized pointer coordinates written into `target`, or null if the pointer is not tracked
+   *         or the rect has zero width/height.
+   */
+  getNDCPoint(pointerId: number, target?: Point, rect?: Rect): Point | null {
+    if (!this.element || this.isPointerLocked) return null;
+
+    const p = this.getPointer(pointerId);
+    if (!p) return null;
+
+    const _rect = rect ?? this.element.getBoundingClientRect();
+
+    if (_rect.width === 0 || _rect.height === 0) return null;
+
+    if (!target) target = { x: 0, y: 0 };
+
+    target.x = ((p.clientX - _rect.left) / _rect.width) * 2 - 1;
+    target.y = (-(p.clientY - _rect.top) / _rect.height) * 2 + 1;
+
+    return target;
   }
 
   /**
    * Computes the centroid of all currently tracked pointers.
    *
-   * This is the average position of all active pointers in screen-space coordinates,
-   * and is commonly used as the anchor point for pinch-to-zoom, rotate, or multi-touch gestures.
+   * This is the average position of all active pointers in viewport-space coordinates
+   * (`clientX`/`clientY`), and is commonly used as the anchor point for pinch-to-zoom,
+   * rotate, or multi-touch gestures.
    *
    * If no pointers are active, returns `null`.
    *
-   * @return The center point `{ x, y }` in screen-space, or `null` if no pointers are tracked.
+   * @param target - A Point object to write results into, allowing reuse and avoiding allocations.
+   * @return The center point `{ x, y }` in viewport-space, written into `target`,
+   *         or `null` if no pointers are tracked.
    */
-  getCenter(): { x: number; y: number } | null {
+  getCenter(target?: Point): Point | null {
     const values = Array.from(this.pointers.values());
     if (values.length === 0) return null;
+
     const sum = values.reduce(
-      (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
+      (acc, p) => ({
+        x: acc.x + p.clientX,
+        y: acc.y + p.clientY,
+      }),
       { x: 0, y: 0 }
     );
-    return { x: sum.x / values.length, y: sum.y / values.length };
+
+    if (!target) target = { x: 0, y: 0 };
+
+    target.x = sum.x / values.length;
+    target.y = sum.y / values.length;
+
+    return target;
   }
 
   /**
@@ -225,25 +250,33 @@ export class PointerTracker {
     const p1 = this.getPointer(a);
     const p2 = this.getPointer(b);
     if (!p1 || !p2) return null;
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
+
+    const dx = p2.clientX - p1.clientX;
+    const dy = p2.clientY - p1.clientY;
+
     return Math.hypot(dx, dy);
   }
 
   protected onPointerDown = (event: PointerEvent) => {
     if (!this.element || this.isPointerLocked) return;
 
+    // Capture this pointerId individually
+    this.element.setPointerCapture(event.pointerId);
+
+    // Attach listeners once (on first pointer)
     if (this.activePointerIds.size === 0) {
-      this.element.setPointerCapture(event.pointerId);
       this.element.addEventListener("pointermove", this.onActivePointerMove);
-      this.element.addEventListener("pointerup", this.onPointerEnd);
+      this.element.addEventListener("pointerup", this.onPointerUp);
     }
 
+    // Register pointer if new
     if (!this.activePointerIds.has(event.pointerId)) {
       this.activePointerIds.add(event.pointerId);
       this.pointers.set(event.pointerId, {
-        x: event.pageX,
-        y: event.pageY,
+        pageX: event.pageX,
+        pageY: event.pageY,
+        clientX: event.clientX,
+        clientY: event.clientY,
         button: event.button,
       });
     }
@@ -253,10 +286,12 @@ export class PointerTracker {
 
   protected onActivePointerMove = (event: PointerEvent) => {
     if (this.activePointerIds.has(event.pointerId)) {
-      this.activePointerIds.add(event.pointerId);
+      // Always update position
       this.pointers.set(event.pointerId, {
-        x: event.pageX,
-        y: event.pageY,
+        pageX: event.pageX,
+        pageY: event.pageY,
+        clientX: event.clientX,
+        clientY: event.clientY,
         button: event.button,
       });
     }
@@ -264,28 +299,44 @@ export class PointerTracker {
     this.onActivePointerMoveCallback?.(event);
   };
 
-  protected onPointerEnd = (event: PointerEvent) => {
-    if (this.element == null) return;
+  protected cleanup(event: PointerEvent) {
+    if (!this.element) return;
 
     this.activePointerIds.delete(event.pointerId);
     this.pointers.delete(event.pointerId);
 
-    if (this.activePointerIds.size === 0) {
+    if (this.element.hasPointerCapture(event.pointerId)) {
       this.element.releasePointerCapture(event.pointerId);
-      this.element.removeEventListener("pointermove", this.onActivePointerMove);
-      this.element.removeEventListener("pointerup", this.onPointerEnd);
-
-      this.onPointerEndCallback?.(event);
     }
-    //
-    else if (this.activePointerIds.size === 1 && this.onSingleTouchResume) {
+
+    if (this.activePointerIds.size === 0) {
+      this.element.removeEventListener("pointermove", this.onActivePointerMove);
+      this.element.removeEventListener("pointerup", this.onPointerUp);
+    }
+  }
+
+  protected onPointerCancel = (event: PointerEvent) => {
+    this.cleanup(event);
+    this.onPointerCancelCallback?.(event);
+    this.onPointerEndCallback?.(event);
+  };
+
+  protected onPointerUp = (event: PointerEvent) => {
+    this.cleanup(event);
+    this.onPointerUpCallback?.(event);
+    this.onPointerEndCallback?.(event);
+
+    // Resume single‑touch gesture if only one pointer remains
+    if (this.activePointerIds.size === 1 && this.onSingleTouchResume) {
       const [remainingId] = this.activePointerIds;
       const pos = this.pointers.get(remainingId);
       if (pos) {
         this.onSingleTouchResume({
           pointerId: remainingId,
-          pageX: pos.x,
-          pageY: pos.y,
+          pageX: pos.pageX,
+          pageY: pos.pageY,
+          clientX: pos.clientX,
+          clientY: pos.clientY,
           button: pos.button,
         });
       }
@@ -313,17 +364,36 @@ export type PointerTrackerProps = {
    * Fires once per unique pointerId when it first becomes active.
    */
   onPointerDown?: (event: PointerEvent) => void;
+
   /**
    * Called whenever an active pointer moves.
    * Fires continuously as long as the pointerId is tracked.
    */
   onActivePointerMove?: (event: PointerEvent) => void;
+
+  /**
+   * Called when a pointer is forcefully cancelled by the browser or OS.
+   * This may occur due to external gestures (e.g. pinch‑zoom, two‑finger scroll),
+   * context menu activation, or other interruptions that invalidate the pointer.
+   * Consumers can use this to reset state or abort ongoing interactions.
+   */
+  onPointerCancel?: (event: PointerEvent) => void;
+
+  /**
+   * Called when a tracked pointer ends normally via a `pointerup` event.
+   * Fires once per pointerId when the user releases the pointer,
+   * allowing consumers to finalize drag gestures or commit changes.
+   * Unlike `onPointerCancel`, this represents a graceful completion.
+   */
+  onPointerUp?: (event: PointerEvent) => void;
+
   /**
    * Called when a pointer ends (pointerup or pointercancel).
    * If this was the last active pointer, the tracker will also
    * release pointer capture and remove move/up listeners.
    */
   onPointerEnd?: (event: PointerEvent) => void;
+
   /**
    * Called whenever a `mousemove` event is received while pointer lock is active.
    *
@@ -335,6 +405,7 @@ export type PointerTrackerProps = {
    * The full `MouseEvent` is passed to preserve access to modifier keys, buttons, and raw deltas.
    */
   onMouseMoveLocked?: (event: MouseEvent) => void;
+
   /**
    * Called whenever a `pointermove` event is received on the target element,
    * regardless of whether the pointer is actively tracked.
@@ -345,6 +416,7 @@ export type PointerTrackerProps = {
    * Useful for passive hover effects, non-captured movement, or supplemental gesture logic.
    */
   onPointerMove?: (event: PointerEvent) => void;
+
   /**
    * Called when multiple pointers were active and one ends,
    * leaving exactly one pointer still active.
@@ -358,13 +430,43 @@ export type PointerTrackerProps = {
 
 export type SyntheticPointerDownEvent = {
   pointerId: number;
-  pageX: number;
+  pageX: number; // absolute page coordinates
   pageY: number;
+  clientX: number; // viewport-relative coordinates
+  clientY: number;
   button: number;
 };
 
-export type PointerInfo = {
-  x: number;
-  y: number;
+export type Pointer = {
+  pageX: number;
+  pageY: number;
+  clientX: number;
+  clientY: number;
   button: number;
 };
+
+export type Point = { x: number; y: number };
+
+export type Rect = {
+  left: number;
+  width: number;
+  top: number;
+  height: number;
+};
+
+// Potential additions
+// - onPointerEnter?: (event: PointerEvent) => void / onPointerLeave?: (event: PointerEvent) => void
+// - Useful for hover effects or gesture pre‑activation.
+// - Mirrors DOM events but scoped to tracked pointers.
+// - onGestureStart?: (pointers: Map<number, PointerState>) => void
+// - Fires when more than one pointer becomes active (multi‑touch gesture begins).
+// - Lets consumers initialize pinch/zoom/rotate logic cleanly.
+// - onGestureChange?: (pointers: Map<number, PointerState>) => void
+// - Fires whenever the set of active pointers changes (move, add, remove).
+// - Provides a consolidated hook for gesture math (distance, centroid, rotation).
+// - onGestureEnd?: () => void
+// - Fires when the last pointer ends, signaling the gesture is complete.
+// - Complements onPointerEnd but at the gesture level.
+// - onPointerCaptureLost?: (event: PointerEvent) => void
+// - Handles the rare case where pointer capture is lost unexpectedly (e.g. element removed).
+// - Gives consumers a chance to reset state gracefully.
